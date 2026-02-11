@@ -1,11 +1,15 @@
 import SwiftUI
+import UIKit
 import WebKit
 import Network
+import NetworkExtension
+import CoreLocation
 import Combine
 
 /// Simple helper view to display a web page inside SwiftUI with WKWebView.
 struct EmbeddedWebView: UIViewRepresentable {
     let url: URL
+    let reloadToken: UUID
     let onSuccess: () -> Void
     let onFailure: (String) -> Void
     private let timeoutSeconds: TimeInterval = 3
@@ -23,6 +27,7 @@ struct EmbeddedWebView: UIViewRepresentable {
         webView.scrollView.contentInset = .zero
         webView.scrollView.scrollIndicatorInsets = .zero
         webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = context.coordinator
         webView.scrollView.isScrollEnabled = true
         webView.scrollView.alwaysBounceVertical = true
         context.coordinator.startNavigation(for: webView, url: url)
@@ -30,18 +35,24 @@ struct EmbeddedWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {
-        // Reload when the URL changes.
-        if uiView.url != url {
+        // Only navigate when the target URL changes to avoid reload loops.
+        if context.coordinator.lastRequestedURL != url {
             context.coordinator.startNavigation(for: uiView, url: url)
+        }
+        if context.coordinator.lastReloadToken != reloadToken {
+            context.coordinator.lastReloadToken = reloadToken
+            uiView.reload()
         }
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         let onSuccess: () -> Void
         let onFailure: (String) -> Void
         let timeoutSeconds: TimeInterval
         private var timeoutWorkItem: DispatchWorkItem?
         private var navigationActive = false
+        private(set) var lastRequestedURL: URL?
+        fileprivate var lastReloadToken: UUID?
 
         init(onSuccess: @escaping () -> Void, onFailure: @escaping (String) -> Void, timeoutSeconds: TimeInterval) {
             self.onSuccess = onSuccess
@@ -51,6 +62,7 @@ struct EmbeddedWebView: UIViewRepresentable {
 
         func startNavigation(for webView: WKWebView, url: URL) {
             navigationActive = true
+            lastRequestedURL = url
             scheduleTimeout(for: webView)
             webView.load(URLRequest(url: url))
         }
@@ -94,6 +106,85 @@ struct EmbeddedWebView: UIViewRepresentable {
                 onFailure("Failed to load page.")
             }
         }
+
+        // MARK: - WKUIDelegate (JS alerts/confirm/prompt)
+
+        func webView(_ webView: WKWebView,
+                     runJavaScriptAlertPanelWithMessage message: String,
+                     initiatedByFrame frame: WKFrameInfo,
+                     completionHandler: @escaping () -> Void) {
+            presentAlert(title: nil, message: message, actions: [
+                UIAlertAction(title: "OK", style: .default) { _ in completionHandler() }
+            ])
+        }
+
+        func webView(_ webView: WKWebView,
+                     runJavaScriptConfirmPanelWithMessage message: String,
+                     initiatedByFrame frame: WKFrameInfo,
+                     completionHandler: @escaping (Bool) -> Void) {
+            presentAlert(title: nil, message: message, actions: [
+                UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) },
+                UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) }
+            ])
+        }
+
+        func webView(_ webView: WKWebView,
+                     runJavaScriptTextInputPanelWithPrompt prompt: String,
+                     defaultText: String?,
+                     initiatedByFrame frame: WKFrameInfo,
+                     completionHandler: @escaping (String?) -> Void) {
+            DispatchQueue.main.async {
+                let alert = UIAlertController(title: nil, message: prompt, preferredStyle: .alert)
+                alert.addTextField { textField in
+                    textField.text = defaultText
+                }
+                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
+                    completionHandler(nil)
+                })
+                alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+                    completionHandler(alert.textFields?.first?.text)
+                })
+                self.present(alert: alert)
+            }
+        }
+
+        private func presentAlert(title: String?,
+                                  message: String,
+                                  actions: [UIAlertAction]) {
+            DispatchQueue.main.async {
+                let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+                actions.forEach { alert.addAction($0) }
+                self.present(alert: alert)
+            }
+        }
+
+        private func present(alert: UIAlertController) {
+            guard let presenter = topMostViewController() else {
+                return
+            }
+            if presenter.presentedViewController != nil {
+                presenter.dismiss(animated: false) {
+                    presenter.present(alert, animated: true)
+                }
+            } else {
+                presenter.present(alert, animated: true)
+            }
+        }
+
+        private func topMostViewController() -> UIViewController? {
+            let scenes = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .filter { $0.activationState == .foregroundActive }
+            let windows = scenes.flatMap { $0.windows }
+            guard let root = windows.first(where: { $0.isKeyWindow })?.rootViewController else {
+                return windows.first?.rootViewController
+            }
+            var top = root
+            while let presented = top.presentedViewController {
+                top = presented
+            }
+            return top
+        }
     }
 }
 
@@ -106,14 +197,23 @@ enum ConnectionState: String {
 
 struct ContentView: View {
     @AppStorage("zt100_target_ip") private var targetIP: String = "10.10.10.10"
+    @Environment(\.scenePhase) private var scenePhase
     @State private var currentURL: URL?
     @State private var status: ConnectionState = .idle
     @State private var alertMessage: String?
     @State private var showingConfig: Bool = false
     @State private var homeTitleHeight: CGFloat = 0
     @State private var homeConnectHeight: CGFloat = 0
+    @State private var homeBottomHeight: CGFloat = 0
+    @State private var reloadToken = UUID()
     @FocusState private var focusedField: Field?
     @StateObject private var wifiMonitor = WifiMonitor()
+    @StateObject private var wifiJoiner = WifiJoiner()
+    @StateObject private var locationPermission = LocationPermissionManager()
+    @State private var didAttemptJoin = false
+    @State private var isJoiningWifi = false
+    private let targetSSID = "ZT-100"
+    private let ssidRefreshInterval: UInt64 = 3_000_000_000
 
     enum Field {
         case ip
@@ -127,6 +227,13 @@ struct ContentView: View {
     }
 
     private struct HomeConnectHeightKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value = nextValue()
+        }
+    }
+
+    private struct HomeBottomHeightKey: PreferenceKey {
         static var defaultValue: CGFloat = 0
         static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
             value = nextValue()
@@ -207,6 +314,27 @@ struct ContentView: View {
         }
         .toolbar(currentURL != nil ? .hidden : .visible, for: .navigationBar)
         .toolbar(.hidden, for: .bottomBar)
+        .onAppear {
+            locationPermission.requestIfNeeded()
+            autoJoinWifiIfNeeded()
+            refreshSSID()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                handleForeground()
+            }
+        }
+        .onChange(of: wifiMonitor.isWifi) { _, _ in
+            refreshSSID()
+        }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            // Poll while active; iOS doesn't provide SSID change callbacks.
+            while !Task.isCancelled {
+                refreshSSID()
+                try? await Task.sleep(nanoseconds: ssidRefreshInterval)
+            }
+        }
     }
 
     private func webPage(url: URL) -> some View {
@@ -214,6 +342,7 @@ struct ContentView: View {
             ZStack(alignment: .top) {
                 EmbeddedWebView(
                     url: url,
+                    reloadToken: reloadToken,
                     onSuccess: {
                         status = .connected
                         alertMessage = nil
@@ -250,6 +379,13 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 .padding(.top, proxy.safeAreaInsets.top + 60)
                 .padding(.trailing, 12)
+
+                if status == .connecting {
+                    ProgressView()
+                        .padding(12)
+                        .background(.thinMaterial, in: Capsule())
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                }
             }
         }
         .ignoresSafeArea()
@@ -258,13 +394,25 @@ struct ContentView: View {
     private var homePage: some View {
         GeometryReader { proxy in
             let padding: CGFloat = 16
-            let connectTopSpacing: CGFloat = 28
             let isLandscape = proxy.size.width > proxy.size.height
-            let topSpacer = max(
-                0,
-                (proxy.size.height / 2)
-                - (padding + homeTitleHeight + connectTopSpacing + (homeConnectHeight / 2))
-            )
+            let contentWidth = max(0, proxy.size.width - (padding * 2))
+            let connectY = proxy.size.height / 2
+            let titleToConnectSpacing: CGFloat = 28
+            let connectToBottomSpacing: CGFloat = 28
+            let portraitTitleAdjust: CGFloat = isLandscape ? 0 : -103
+
+            let titleY =
+            connectY
+            - (homeConnectHeight / 2)
+            - titleToConnectSpacing
+            - (homeTitleHeight / 2)
+            + portraitTitleAdjust
+
+            let bottomY =
+            connectY
+            + (homeConnectHeight / 2)
+            + connectToBottomSpacing
+            + (homeBottomHeight / 2)
 
             ZStack(alignment: .bottom) {
                 if !isLandscape {
@@ -278,45 +426,63 @@ struct ContentView: View {
                         .allowsHitTesting(false)
                 }
 
-                VStack(spacing: 0) {
-                    Color.clear.frame(height: topSpacer)
-
-                    VStack(spacing: 28) {
-                        VStack(spacing: 8) {
-                            Text("ZT-100")
-                                .font(.largeTitle.weight(.semibold))
-                            Text("Connected device portal")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                ZStack {
+                    VStack(spacing: 8) {
+                        Text("ZT-100")
+                            .font(.largeTitle.weight(.semibold))
+                        Text("Connected device portal")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Button {
+                            if wifiJoiner.currentSSID != targetSSID {
+                                attemptJoinWifi(force: true)
+                            }
+                        } label: {
                             wifiBadge
                         }
-                        .offset(y: isLandscape ? 0 : -103)
-                        .background(
-                            GeometryReader { inner in
-                                Color.clear.preference(key: HomeTitleHeightKey.self, value: inner.size.height)
-                            }
-                        )
-
-                        Button {
-                            focusedField = nil
-                            openPage()
-                        } label: {
-                            Label("Connect", systemImage: "antenna.radiowaves.left.and.right")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.blue.gradient)
-                                .foregroundStyle(.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .buttonStyle(.plain)
+                        if isJoiningWifi {
+                            ProgressView()
+                                .scaleEffect(0.85)
                         }
-                        .disabled(formattedURL == nil)
-                        .opacity(formattedURL == nil ? 0.6 : 1)
-                        .background(
-                            GeometryReader { inner in
-                                Color.clear.preference(key: HomeConnectHeightKey.self, value: inner.size.height)
-                            }
-                        )
+                        if let ssid = wifiJoiner.currentSSID, ssid != targetSSID {
+                            wifiSSIDLabel
+                        }
+                        if !wifiMonitor.isWifi && wifiJoiner.currentSSID != nil {
+                            wifiRouteLabel
+                        }
+                    }
+                    .frame(width: contentWidth)
+                    .background(
+                        GeometryReader { inner in
+                            Color.clear.preference(key: HomeTitleHeightKey.self, value: inner.size.height)
+                        }
+                    )
+                    .position(x: proxy.size.width / 2, y: titleY)
 
+                    Button {
+                        focusedField = nil
+                        openPage()
+                    } label: {
+                        Label("Connect", systemImage: "antenna.radiowaves.left.and.right")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue.gradient)
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .frame(width: contentWidth)
+                    .disabled(formattedURL == nil)
+                    .opacity(formattedURL == nil ? 0.6 : 1)
+                    .background(
+                        GeometryReader { inner in
+                            Color.clear.preference(key: HomeConnectHeightKey.self, value: inner.size.height)
+                        }
+                    )
+                    .position(x: proxy.size.width / 2, y: connectY)
+
+                    VStack(spacing: 28) {
                         HStack(spacing: 12) {
                             Button {
                                 focusedField = nil
@@ -344,23 +510,25 @@ struct ContentView: View {
                             }
                         }
 
-                        VStack(spacing: 6) {
-                            Text("Make sure your phone is on the ZT-100 Wi‑Fi.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                        }
                     }
+                    .frame(width: contentWidth)
+                    .background(
+                        GeometryReader { inner in
+                            Color.clear.preference(key: HomeBottomHeightKey.self, value: inner.size.height)
+                        }
+                    )
+                    .position(x: proxy.size.width / 2, y: bottomY)
                 }
             }
-            .padding(.all, padding)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .onPreferenceChange(HomeTitleHeightKey.self) { newValue in
                 homeTitleHeight = newValue
             }
             .onPreferenceChange(HomeConnectHeightKey.self) { newValue in
                 homeConnectHeight = newValue
+            }
+            .onPreferenceChange(HomeBottomHeightKey.self) { newValue in
+                homeBottomHeight = newValue
             }
         }
     }
@@ -401,19 +569,32 @@ struct ContentView: View {
 
     /// Fancy Wi‑Fi badge (Wi‑Fi vs offline) shown on the home screen.
     private var wifiBadge: some View {
-        HStack(spacing: 8) {
-            Image(systemName: wifiMonitor.isWifi ? "wifi" : "wifi.slash")
+        let onTarget = wifiJoiner.currentSSID == targetSSID
+        let badgeText: String
+        let badgeColors: [Color]
+
+        if onTarget {
+            badgeText = "On \(targetSSID)"
+            badgeColors = [Color.green.opacity(0.4), Color.green.opacity(0.2)]
+        } else if wifiMonitor.isWifi {
+            badgeText = "Wi‑Fi ON"
+            badgeColors = [Color.blue.opacity(0.35), Color.blue.opacity(0.2)]
+        } else {
+            badgeText = "Wi‑Fi OFF"
+            badgeColors = [Color.red.opacity(0.4), Color.red.opacity(0.2)]
+        }
+
+        return HStack(spacing: 8) {
+            Image(systemName: (onTarget || wifiMonitor.isWifi) ? "wifi" : "wifi.slash")
                 .font(.headline)
-            Text(wifiMonitor.isWifi ? "Wi‑Fi ON" : "Wi‑Fi OFF")
+            Text(badgeText)
                 .font(.footnote.weight(.semibold))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(
             LinearGradient(
-                colors: wifiMonitor.isWifi
-                ? [Color.green.opacity(0.4), Color.green.opacity(0.2)]
-                : [Color.red.opacity(0.4), Color.red.opacity(0.2)],
+                colors: badgeColors,
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -425,6 +606,70 @@ struct ContentView: View {
         )
         .shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 3)
         .padding(.top, 4)
+    }
+
+    private var wifiSSIDLabel: some View {
+        let hasSSID = wifiJoiner.currentSSID != nil
+        return Text("SSID: \(wifiJoiner.currentSSID ?? "—")")
+            .font(.footnote)
+            .foregroundStyle(hasSSID ? .secondary : .tertiary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.black.opacity(hasSSID ? 0.06 : 0.03), in: Capsule())
+    }
+
+    private var wifiRouteLabel: some View {
+        Text("Route: \(wifiMonitor.isWifi ? "Wi‑Fi" : "Cellular")")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
+    private func autoJoinWifiIfNeeded() {
+        attemptJoinWifi(force: false)
+    }
+
+    private func attemptJoinWifi(force: Bool) {
+        if !force {
+            guard !didAttemptJoin else { return }
+        }
+        didAttemptJoin = true
+        isJoiningWifi = true
+        wifiJoiner.refreshSSID { currentSSID in
+            guard currentSSID != targetSSID else {
+                isJoiningWifi = false
+                return
+            }
+            if force {
+                // Clear any saved config so iOS shows the join prompt again.
+                NEHotspotConfigurationManager.shared.removeConfiguration(forSSID: targetSSID)
+            }
+            wifiJoiner.join(ssid: targetSSID, passphrase: nil) { error in
+                isJoiningWifi = false
+                if let error = error as NSError?,
+                   error.domain == NEHotspotConfigurationErrorDomain,
+                   error.code == NEHotspotConfigurationError.alreadyAssociated.rawValue {
+                    refreshSSID()
+                    return
+                }
+                if let error {
+                    alertMessage = error.localizedDescription
+                } else {
+                    refreshSSID()
+                }
+            }
+        }
+    }
+
+    private func refreshSSID() {
+        wifiJoiner.refreshSSID()
+    }
+
+    private func handleForeground() {
+        refreshSSID()
+        attemptJoinWifi(force: false)
+        if currentURL != nil {
+            reloadToken = UUID()
+        }
     }
 }
 
@@ -445,5 +690,52 @@ final class WifiMonitor: ObservableObject {
 
     deinit {
         monitor.cancel()
+    }
+}
+
+/// Fetch current SSID and request to join a network.
+final class WifiJoiner: ObservableObject {
+    @Published private(set) var currentSSID: String?
+
+    func refreshSSID(completion: ((String?) -> Void)? = nil) {
+        NEHotspotNetwork.fetchCurrent { network in
+            DispatchQueue.main.async {
+                let ssid = network?.ssid
+                self.currentSSID = ssid
+                completion?(ssid)
+            }
+        }
+    }
+
+    func join(ssid: String, passphrase: String?, completion: @escaping (Error?) -> Void) {
+        let config: NEHotspotConfiguration
+        if let passphrase, !passphrase.isEmpty {
+            config = NEHotspotConfiguration(ssid: ssid, passphrase: passphrase, isWEP: false)
+        } else {
+            config = NEHotspotConfiguration(ssid: ssid)
+        }
+        config.joinOnce = false
+        NEHotspotConfigurationManager.shared.apply(config) { error in
+            DispatchQueue.main.async {
+                completion(error)
+            }
+        }
+    }
+}
+
+/// Prompts for location permission so SSID access is available.
+final class LocationPermissionManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+
+    override init() {
+        super.init()
+        manager.delegate = self
+    }
+
+    func requestIfNeeded() {
+        let status = manager.authorizationStatus
+        if status == .notDetermined {
+            manager.requestWhenInUseAuthorization()
+        }
     }
 }

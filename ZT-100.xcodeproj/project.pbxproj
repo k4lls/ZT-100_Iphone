@@ -6,13 +6,31 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		84C3BAED2F20F2A500C8D064 /* TestPlan.xctestplan in Resources */ = {isa = PBXBuildFile; fileRef = 84C3BAEC2F20F2A500C8D064 /* TestPlan.xctestplan */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
-		84C515402EEAC9F2001665A6 /* ZT-100.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "ZT-100.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		84C3BAEC2F20F2A500C8D064 /* TestPlan.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = TestPlan.xctestplan; sourceTree = "<group>"; };
+		84C515402EEAC9F2001665A6 /* ZONGE TX100.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "ZONGE TX100.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		84C5154F2EEACC0B001665A6 /* Exceptions for "ZT-100" folder in "ZONGE TX100" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 84C5153F2EEAC9F2001665A6 /* ZONGE TX100 */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		84C515422EEAC9F2001665A6 /* ZT-100 */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				84C5154F2EEACC0B001665A6 /* Exceptions for "ZT-100" folder in "ZONGE TX100" target */,
+			);
 			path = "ZT-100";
 			sourceTree = "<group>";
 		};
@@ -32,6 +50,7 @@
 		84C515372EEAC9F2001665A6 = {
 			isa = PBXGroup;
 			children = (
+				84C3BAEC2F20F2A500C8D064 /* TestPlan.xctestplan */,
 				84C515422EEAC9F2001665A6 /* ZT-100 */,
 				84C515412EEAC9F2001665A6 /* Products */,
 			);
@@ -40,7 +59,7 @@
 		84C515412EEAC9F2001665A6 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				84C515402EEAC9F2001665A6 /* ZT-100.app */,
+				84C515402EEAC9F2001665A6 /* ZONGE TX100.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,9 +67,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		84C5153F2EEAC9F2001665A6 /* ZT-100 */ = {
+		84C5153F2EEAC9F2001665A6 /* ZONGE TX100 */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 84C5154B2EEAC9F4001665A6 /* Build configuration list for PBXNativeTarget "ZT-100" */;
+			buildConfigurationList = 84C5154B2EEAC9F4001665A6 /* Build configuration list for PBXNativeTarget "ZONGE TX100" */;
 			buildPhases = (
 				84C5153C2EEAC9F2001665A6 /* Sources */,
 				84C5153D2EEAC9F2001665A6 /* Frameworks */,
@@ -63,11 +82,11 @@
 			fileSystemSynchronizedGroups = (
 				84C515422EEAC9F2001665A6 /* ZT-100 */,
 			);
-			name = "ZT-100";
+			name = "ZONGE TX100";
 			packageProductDependencies = (
 			);
 			productName = "ZT-100";
-			productReference = 84C515402EEAC9F2001665A6 /* ZT-100.app */;
+			productReference = 84C515402EEAC9F2001665A6 /* ZONGE TX100.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -78,7 +97,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2610;
-				LastUpgradeCheck = 2610;
+				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					84C5153F2EEAC9F2001665A6 = {
 						CreatedOnToolsVersion = 26.1.1;
@@ -99,7 +118,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				84C5153F2EEAC9F2001665A6 /* ZT-100 */,
+				84C5153F2EEAC9F2001665A6 /* ZONGE TX100 */,
 			);
 		};
 /* End PBXProject section */
@@ -109,6 +128,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				84C3BAED2F20F2A500C8D064 /* TestPlan.xctestplan in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -160,6 +180,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 62PALZSSUW;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -183,6 +204,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -223,6 +245,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 62PALZSSUW;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -239,6 +262,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -249,10 +273,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "ZT-100/ZT-100.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "ZT-100/Info.plist";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Needed to reach the ZT-100 device on your network.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -265,6 +293,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "Geophyz.ZT-100";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -280,10 +309,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "ZT-100/ZT-100.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "ZT-100/Info.plist";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Needed to reach the ZT-100 device on your network.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -296,6 +329,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "Geophyz.ZT-100";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -318,7 +352,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		84C5154B2EEAC9F4001665A6 /* Build configuration list for PBXNativeTarget "ZT-100" */ = {
+		84C5154B2EEAC9F4001665A6 /* Build configuration list for PBXNativeTarget "ZONGE TX100" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				84C5154C2EEAC9F4001665A6 /* Debug */,
