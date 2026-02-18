@@ -5,6 +5,49 @@ import Network
 import NetworkExtension
 import CoreLocation
 import Combine
+import PDFKit
+import CryptoKit
+
+/// Wrapper to present PDFView from SwiftUI.
+struct ManualPDFView: UIViewRepresentable {
+    let url: URL
+
+    func makeUIView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.autoScales = true
+        view.displayMode = .singlePageContinuous
+        view.displayDirection = .vertical
+        view.document = PDFDocument(url: url)
+        return view
+    }
+
+    func updateUIView(_ uiView: PDFView, context: Context) {
+        if uiView.document?.documentURL != url {
+            uiView.document = PDFDocument(url: url)
+        }
+    }
+}
+
+private struct ManualSheetItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct ConfigureActionButtonStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(.black)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(Color.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+private extension View {
+    func configureActionButtonStyle() -> some View {
+        modifier(ConfigureActionButtonStyle())
+    }
+}
 
 /// Simple helper view to display a web page inside SwiftUI with WKWebView.
 struct EmbeddedWebView: UIViewRepresentable {
@@ -212,6 +255,8 @@ struct ContentView: View {
     @StateObject private var locationPermission = LocationPermissionManager()
     @State private var didAttemptJoin = false
     @State private var isJoiningWifi = false
+    @State private var manualSheetItem: ManualSheetItem?
+    @StateObject private var manualManager = ManualManager()
     private let targetSSID = "ZT-100"
     private let ssidRefreshInterval: UInt64 = 3_000_000_000
 
@@ -286,9 +331,40 @@ struct ContentView: View {
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
                                 .focused($focusedField, equals: .ip)
-                            Button("Reset to default (10.10.10.10)") {
+                            Button {
                                 targetIP = "10.10.10.10"
+                            } label: {
+                                Text("Reset to default (10.10.10.10)")
+                                    .configureActionButtonStyle()
                             }
+                            .buttonStyle(.plain)
+                        }
+                        Section("Manual") {
+                            Text("Source: \(manualManager.manualSourceLabel)")
+                            if let updatedText = manualManager.lastUpdatedText {
+                                Text("Last updated: \(updatedText)")
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let checkedText = manualManager.lastCheckedText {
+                                Text("Last checked: \(checkedText)")
+                                    .foregroundStyle(.secondary)
+                            }
+                            Button {
+                                Task {
+                                    await manualManager.checkForUpdateIfNeeded(force: true)
+                                }
+                            } label: {
+                                HStack {
+                                    if manualManager.isUpdating {
+                                        ProgressView()
+                                            .progressViewStyle(.circular)
+                                    }
+                                    Text(manualManager.isUpdating ? "Checking..." : "Force Download Latest Manual")
+                                }
+                                .configureActionButtonStyle()
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(manualManager.isUpdating)
                         }
                     }
                     .navigationTitle("Configuration")
@@ -311,6 +387,14 @@ struct ContentView: View {
             } message: {
                 Text(alertMessage ?? "Unknown error")
             }
+            .sheet(item: $manualSheetItem) { item in
+                NavigationStack {
+                    ManualPDFView(url: item.url)
+                        .ignoresSafeArea()
+                        .navigationTitle("User Manual")
+                        .navigationBarTitleDisplayMode(.inline)
+                }
+            }
         }
         .toolbar(currentURL != nil ? .hidden : .visible, for: .navigationBar)
         .toolbar(.hidden, for: .bottomBar)
@@ -318,6 +402,9 @@ struct ContentView: View {
             locationPermission.requestIfNeeded()
             autoJoinWifiIfNeeded()
             refreshSSID()
+            Task {
+                await manualManager.checkForUpdateIfNeeded()
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -426,6 +513,12 @@ struct ContentView: View {
                         .allowsHitTesting(false)
                 }
 
+                Text("For professional use only")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, max(12, proxy.safeAreaInsets.bottom + 6))
+                    .allowsHitTesting(false)
+
                 ZStack {
                     VStack(spacing: 8) {
                         Text("ZT-100")
@@ -499,6 +592,7 @@ struct ContentView: View {
                             .opacity(formattedURL == nil ? 0.6 : 1)
 
                             Button {
+                                manualManager.reloadAvailability()
                                 showingConfig = true
                             } label: {
                                 Label("Configure", systemImage: "slider.horizontal.3")
@@ -509,6 +603,23 @@ struct ContentView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             }
                         }
+                        Button {
+                            focusedField = nil
+                            openManual()
+                        } label: {
+                            Label("Open Manual", systemImage: "book.closed")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.blue.opacity(0.12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(Color.blue.opacity(0.35), lineWidth: 1)
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .disabled(manualManager.preferredManualURL == nil)
+                        .opacity(manualManager.preferredManualURL == nil ? 0.6 : 1)
 
                     }
                     .frame(width: contentWidth)
@@ -555,6 +666,15 @@ struct ContentView: View {
         status = .connecting
         alertMessage = nil
         currentURL = admin
+    }
+
+    private func openManual() {
+        manualManager.reloadAvailability()
+        guard let url = manualManager.preferredManualURL else {
+            alertMessage = "Manual not found. Add ZT-100_User_Manual.pdf to the app target."
+            return
+        }
+        manualSheetItem = ManualSheetItem(url: url)
     }
 
     /// Derive the admin URL by keeping scheme/host/port and forcing path to /admin.
@@ -667,6 +787,9 @@ struct ContentView: View {
     private func handleForeground() {
         refreshSSID()
         attemptJoinWifi(force: false)
+        Task {
+            await manualManager.checkForUpdateIfNeeded()
+        }
         if currentURL != nil {
             reloadToken = UUID()
         }
@@ -738,4 +861,204 @@ final class LocationPermissionManager: NSObject, ObservableObject, CLLocationMan
             manager.requestWhenInUseAuthorization()
         }
     }
+}
+
+/// Manages bundled + downloaded manuals so the app works offline.
+@MainActor
+final class ManualManager: ObservableObject {
+    @Published private(set) var isUpdating = false
+    @Published private(set) var lastUpdated: Date?
+    @Published private(set) var lastChecked: Date?
+    @Published private(set) var hasCachedCopy = false
+    @Published private(set) var hasBundledCopy = false
+
+    private let bundledName = "ZT-100_User_Manual"
+    private let bundledExtension = "pdf"
+    private let cachedFilename = "ZT-100_User_Manual.cached.pdf"
+    private let remotePDFURLString = "https://zonge-international.github.io/ZT-100_User_Manual/_static/ZT-100_User_Manual.pdf"
+    private let lastUpdatedDefaultsKey = "zt100_manual_last_updated"
+    private let lastCheckedDefaultsKey = "zt100_manual_last_checked"
+    private let etagDefaultsKey = "zt100_manual_etag"
+    private let lastModifiedDefaultsKey = "zt100_manual_last_modified"
+    private let minimumCheckInterval: TimeInterval = 6 * 60 * 60
+
+    init() {
+        lastUpdated = UserDefaults.standard.object(forKey: lastUpdatedDefaultsKey) as? Date
+        lastChecked = UserDefaults.standard.object(forKey: lastCheckedDefaultsKey) as? Date
+        refreshAvailability()
+    }
+
+    var preferredManualURL: URL? {
+        if hasCachedCopy {
+            return cachedURL
+        }
+        if hasBundledCopy {
+            return bundledURL
+        }
+        return nil
+    }
+
+    var manualSourceLabel: String {
+        if hasCachedCopy {
+            return "Downloaded manual copy"
+        }
+        if hasBundledCopy {
+            return "Bundled manual included in the app"
+        }
+        return "Unavailable"
+    }
+
+    var lastUpdatedText: String? {
+        guard hasCachedCopy, let lastUpdated else { return nil }
+        return Self.dateFormatter.string(from: lastUpdated)
+    }
+
+    var lastCheckedText: String? {
+        guard let lastChecked else { return nil }
+        return Self.dateFormatter.string(from: lastChecked)
+    }
+
+    func reloadAvailability() {
+        lastUpdated = UserDefaults.standard.object(forKey: lastUpdatedDefaultsKey) as? Date
+        refreshAvailability()
+    }
+
+    func checkForUpdateIfNeeded(force: Bool = false) async {
+        guard !isUpdating else { return }
+        guard force || shouldCheckNow else { return }
+        guard let remoteURL = URL(string: remotePDFURLString) else { return }
+
+        isUpdating = true
+        defer {
+            isUpdating = false
+            refreshAvailability()
+        }
+
+        let checkDate = Date()
+        lastChecked = checkDate
+        UserDefaults.standard.set(checkDate, forKey: lastCheckedDefaultsKey)
+
+        do {
+            let metadata = try await fetchRemoteMetadata(for: remoteURL)
+            let remoteETag = metadata.etag
+            let remoteLastModified = metadata.lastModified
+            let storedETag = UserDefaults.standard.string(forKey: etagDefaultsKey)
+            let storedLastModified = UserDefaults.standard.string(forKey: lastModifiedDefaultsKey)
+
+            let shouldDownload: Bool
+            let metadataDecidesNoChange: Bool
+            if !hasCachedCopy {
+                shouldDownload = true
+                metadataDecidesNoChange = false
+            } else if let remoteETag, !remoteETag.isEmpty {
+                shouldDownload = remoteETag != storedETag
+                metadataDecidesNoChange = remoteETag == storedETag
+            } else if let remoteLastModified, !remoteLastModified.isEmpty {
+                shouldDownload = remoteLastModified != storedLastModified
+                metadataDecidesNoChange = remoteLastModified == storedLastModified
+            } else {
+                // Metadata missing; use content hash fallback.
+                shouldDownload = true
+                metadataDecidesNoChange = false
+            }
+
+            guard shouldDownload else {
+                if metadataDecidesNoChange {
+                    persistRemoteMetadata(etag: remoteETag, lastModified: remoteLastModified)
+                }
+                return
+            }
+            let (tempURL, response) = try await URLSession.shared.download(from: remoteURL)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200...299).contains(httpResponse.statusCode) else {
+                return
+            }
+
+            if hasCachedCopy,
+               let existingHash = try? fileSHA256(at: cachedURL),
+               let downloadedHash = try? fileSHA256(at: tempURL),
+               existingHash == downloadedHash {
+                try? FileManager.default.removeItem(at: tempURL)
+                persistRemoteMetadata(etag: remoteETag, lastModified: remoteLastModified)
+                return
+            }
+
+            let fm = FileManager.default
+            let folder = cacheDirectoryURL()
+            if !fm.fileExists(atPath: folder.path) {
+                try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            }
+            if fm.fileExists(atPath: cachedURL.path) {
+                try fm.removeItem(at: cachedURL)
+            }
+            try fm.moveItem(at: tempURL, to: cachedURL)
+
+            let now = Date()
+            lastUpdated = now
+            UserDefaults.standard.set(now, forKey: lastUpdatedDefaultsKey)
+            persistRemoteMetadata(etag: remoteETag, lastModified: remoteLastModified)
+        } catch {
+            // Keep current copy if offline or request fails.
+        }
+    }
+
+    private var bundledURL: URL? {
+        Bundle.main.url(forResource: bundledName, withExtension: bundledExtension)
+    }
+
+    private var cachedURL: URL {
+        cacheDirectoryURL().appendingPathComponent(cachedFilename)
+    }
+
+    private func cacheDirectoryURL() -> URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        return (appSupport ?? FileManager.default.temporaryDirectory).appendingPathComponent("ManualCache", isDirectory: true)
+    }
+
+    private func refreshAvailability() {
+        let fm = FileManager.default
+        hasBundledCopy = bundledURL != nil
+        hasCachedCopy = fm.fileExists(atPath: cachedURL.path)
+    }
+
+    private var shouldCheckNow: Bool {
+        guard let lastChecked else { return true }
+        return Date().timeIntervalSince(lastChecked) >= minimumCheckInterval
+    }
+
+    private func fetchRemoteMetadata(for remoteURL: URL) async throws -> (etag: String?, lastModified: String?) {
+        var request = URLRequest(url: remoteURL)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 15
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            return (nil, nil)
+        }
+        let etag = httpResponse.value(forHTTPHeaderField: "ETag")
+        let lastModified = httpResponse.value(forHTTPHeaderField: "Last-Modified")
+        return (etag, lastModified)
+    }
+
+    private func persistRemoteMetadata(etag: String?, lastModified: String?) {
+        if let etag {
+            UserDefaults.standard.set(etag, forKey: etagDefaultsKey)
+        }
+        if let lastModified {
+            UserDefaults.standard.set(lastModified, forKey: lastModifiedDefaultsKey)
+        }
+    }
+
+    private func fileSHA256(at url: URL) throws -> String {
+        let data = try Data(contentsOf: url, options: .mappedIfSafe)
+        let digest = SHA256.hash(data: data)
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 }

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ZONGE TX100.ipa</key>
+	<array>
+		<dict>
+			<key>architectures</key>
+			<array>
+				<string>arm64</string>
+			</array>
+			<key>buildNumber</key>
+			<string>2</string>
+			<key>certificate</key>
+			<dict>
+				<key>SHA1</key>
+				<string>242C110B6335827F5908B07B12EEF50AD5520616</string>
+				<key>dateExpires</key>
+				<string>21/01/2027</string>
+				<key>type</key>
+				<string>Cloud Managed Apple Distribution</string>
+			</dict>
+			<key>entitlements</key>
+			<dict>
+				<key>application-identifier</key>
+				<string>62PALZSSUW.Geophyz.ZT-100</string>
+				<key>beta-reports-active</key>
+				<true/>
+				<key>com.apple.developer.networking.HotspotConfiguration</key>
+				<true/>
+				<key>com.apple.developer.networking.wifi-info</key>
+				<true/>
+				<key>com.apple.developer.team-identifier</key>
+				<string>62PALZSSUW</string>
+				<key>get-task-allow</key>
+				<false/>
+			</dict>
+			<key>name</key>
+			<string>ZONGE TX100.app</string>
+			<key>profile</key>
+			<dict>
+				<key>UUID</key>
+				<string>d4e6a3af-4efa-4a13-a180-1e7c77c4b5df</string>
+				<key>dateExpires</key>
+				<string>21/01/2027</string>
+				<key>name</key>
+				<string>iOS Team Store Provisioning Profile: Geophyz.ZT-100</string>
+			</dict>
+			<key>symbols</key>
+			<true/>
+			<key>team</key>
+			<dict>
+				<key>id</key>
+				<string>62PALZSSUW</string>
+				<key>name</key>
+				<string>MARC ADRIEN BENOIT</string>
+			</dict>
+			<key>versionNumber</key>
+			<string>1.1</string>
+		</dict>
+	</array>
+</dict>
+</plist>
